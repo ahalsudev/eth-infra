@@ -1,4 +1,5 @@
 reth-node-key.pem
+reth-node-pub.pem
 .trunk
 .terraform.lock.hcl
 .terraform/
