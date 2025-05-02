@@ -52,6 +52,16 @@
         state: present
         update_cache: true
 
+    - name: Add ubuntu user to docker group
+      ansible.builtin.user:
+        name: ubuntu
+        groups: docker
+        append: true
+
+    - name: Notify about group changes
+      ansible.builtin.debug:
+        msg: "Please log out and log back in for Docker group changes to take effect"
+
     - name: Create filesystem on EBS volume
       community.general.filesystem:
         fstype: xfs
@@ -70,3 +80,114 @@
         fstype: xfs
         opts: "defaults"
         state: mounted
+
+    - name: Create data directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - /mnt/reth_data/mainnet
+        - /mnt/reth_data/sepolia
+        - /mnt/reth_data/holesky
+        - /mnt/reth_data/logs
+        - /mnt/reth_data/prometheus
+        - /mnt/reth_data/grafana
+        - /mnt/reth_data/lighthouse
+
+    - name: Set directory ownership
+      ansible.builtin.file:
+        path: /mnt/reth_data
+        state: directory
+        owner: "1000"
+        group: "1000"
+        recurse: true
+
+    - name: Clone repository
+      ansible.builtin.git:
+        repo: "https://github.com/paradigmxyz/reth.git"
+        dest: /home/ubuntu/reth
+        version: "tags/v1.3.12"
+        force: true
+
+    - name: Update docker-compose volumes
+      ansible.builtin.blockinfile:
+        path: /home/ubuntu/reth/etc/docker-compose.yml
+        block: |
+          volumes:
+            mainnet_data:
+              driver: local
+              driver_opts:
+                type: none
+                device: /mnt/reth_data/mainnet
+                o: bind
+            sepolia_data:
+              driver: local
+              driver_opts:
+                type: none
+                device: /mnt/reth_data/sepolia
+                o: bind
+            holesky_data:
+              driver: local
+              driver_opts:
+                type: none
+                device: /mnt/reth_data/holesky
+                o: bind
+            logs:
+              driver: local
+              driver_opts:
+                type: none
+                device: /mnt/reth_data/logs
+                o: bind
+            prometheusdata:
+              driver: local
+              driver_opts:
+                type: none
+                device: /mnt/reth_data/prometheus
+                o: bind
+            grafanadata:
+              driver: local
+              driver_opts:
+                type: none
+                device: /mnt/reth_data/grafana
+                o: bind
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - volumes"
+        insertafter: "^volumes:"
+
+    - name: Update lighthouse volumes
+      ansible.builtin.blockinfile:
+        path: /home/ubuntu/reth/etc/lighthouse.yml
+        block: |
+          volumes:
+            lighthousedata:
+              driver: local
+              driver_opts:
+                type: none
+                device: /mnt/reth_data/lighthouse
+                o: bind
+        marker: "# {mark} ANSIBLE MANAGED BLOCK - volumes"
+        insertafter: "^volumes:"
+
+    - name: Replace docker-compose files
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        remote_src: false
+        mode: "0644"
+        owner: ubuntu
+        group: ubuntu
+      loop:
+        - { src: "lighthouse-docker-compose.yml", dest: "/home/ubuntu/reth/etc/lighthouse.yml" }
+        - { src: "reth-docker-compose.yml", dest: "/home/ubuntu/reth/etc/docker-compose.yml" }
+
+    - name: Generate JWT
+      ansible.builtin.shell: ./etc/generate-jwt.sh
+      args:
+        chdir: /home/ubuntu/reth
+        executable: /bin/bash
+
+    - name: Start Reth containers
+      ansible.builtin.shell: docker compose -f etc/docker-compose.yml -f etc/lighthouse.yml up -d
+      args:
+        chdir: /home/ubuntu/reth
+        executable: /bin/bash
