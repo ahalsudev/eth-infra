@@ -65,6 +65,15 @@ resource "aws_vpc_security_group_ingress_rule" "allow_p2p_lighthouse_ipv4_udp" {
   ip_protocol       = "udp"
 }
 
+
+resource "aws_vpc_security_group_ingress_rule" "allow_rpc_api_ipv4_tcp" {
+  security_group_id = aws_security_group.reth_node_security_group.id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 8545 # range start
+  to_port           = 8545 # range end
+  ip_protocol       = "tcp"
+}
+
 resource "aws_vpc_security_group_egress_rule" "allow_all_traffic_ipv4" {
   security_group_id = aws_security_group.reth_node_security_group.id
   cidr_ipv4         = "0.0.0.0/0"
